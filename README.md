@@ -117,7 +117,9 @@ cloudflared tunnel --url http://localhost:3000
 ```
 
 The URL changes every time you restart (free tier limitation). Copy the generated URL
-(e.g. `https://random-words.trycloudflare.com`).
+(e.g. `https://random-words.trycloudflare.com`) — look for it in the output:
+
+![Cloudflared Tunnel URL](screenshots/06-cloudflared-tunnel-url.png)
 
 Now go back to Duo Admin and paste `https://<your-url>/mcp` into:
 - MCP OIDC integration → General tab → **Resource URLs**
