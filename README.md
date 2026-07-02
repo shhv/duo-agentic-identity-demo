@@ -197,27 +197,32 @@ docker logs agentgateway 2>&1 | grep "server ready"
 ### Step 7: Configure Duo Authorization Policy
 
 1. Duo Admin → **Applications → MCP Servers** → find your gateway → **Configure policy**
-2. Add rules (JSON or form):
+2. Paste this policy JSON:
 
 ```json
 {
   "rules": [
     {
+      "group": "HR Team",
+      "tools": [
+        "acme-tools_hr_get_employee",
+        "acme-tools_hr_list_departments",
+        "acme-tools_hr_create_employee",
+        "acme-tools_hr_update_salary",
+        "acme-tools_finance_get_budget",
+        "acme-tools_finance_list_expenses"
+      ]
+    },
+    {
+      "group": "Finance Team",
       "tools": [
         "acme-tools_hr_get_employee",
         "acme-tools_hr_list_departments",
         "acme-tools_finance_get_budget",
-        "acme-tools_finance_list_expenses"
-      ],
-      "groups": ["HR Team", "Finance Team"]
-    },
-    {
-      "tools": ["acme-tools_hr_create_employee", "acme-tools_hr_update_salary"],
-      "groups": ["HR Team"]
-    },
-    {
-      "tools": ["acme-tools_finance_create_expense", "acme-tools_finance_approve_payment"],
-      "groups": ["Finance Team"]
+        "acme-tools_finance_list_expenses",
+        "acme-tools_finance_create_expense",
+        "acme-tools_finance_approve_payment"
+      ]
     }
   ]
 }
@@ -280,12 +285,24 @@ The Cloudflare quick tunnel URL changes every time you restart it. When that hap
 ### Then restart:
 
 ```bash
-# Regenerate gateway config with new URL
-docker compose down
-COMPOSE_PROFILES=agentgateway docker compose up -d
+make down && make up
+```
 
-# Verify
-docker logs agentgateway 2>&1 | tail -5
+Verify containers are running:
+```bash
+docker ps  # Should show: mcp-server, authz-bridge, agentgateway
+```
+
+### Run the demo:
+
+```bash
+cd agents
+source .venv/bin/activate
+export $(grep -v '^#' ../.env | xargs)
+
+python3 hr_agent.py        # Log in as HR user → 6/8 allowed
+python3 finance_agent.py   # Log in as Finance user → 6/8 allowed
+python3 dcr_agent.py       # Self-registers a new client, log in as any user
 ```
 
 ### Tip: Use a Named Tunnel for Stable URLs
