@@ -1,0 +1,25 @@
+# Quickstart configuration template for Duo agentgateway + authz-connector
+# Values are injected by the configgen init containers from environment variables.
+
+[general]
+log_level = info
+
+[authz-connector]
+listen_address = 0.0.0.0:9001
+duo_api_hostname = ${DUO_API_HOSTNAME}
+duo_integration_key = ${DUO_INTEGRATION_KEY}
+duo_secret_key = ${DUO_SECRET_KEY}
+
+[agentgateway]
+listen_address = 0.0.0.0:3000
+authz_connector_address = authz-connector:9001
+
+[agentgateway.mcp]
+# Upstream MCP server (no auth — internal network only)
+upstream_url = http://mcp-server:8000/sse
+transport = sse
+
+[agentgateway.oauth]
+# Duo SSO token introspection for validating agent tokens
+issuer = ${OAUTH_TOKEN_URL}
+audience = agentgateway

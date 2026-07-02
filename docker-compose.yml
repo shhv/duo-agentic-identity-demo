@@ -1,0 +1,89 @@
+services:
+  # ─── MCP Server (our custom app) ───────────────────────────
+  mcp-server:
+    build: ./mcp-server
+    container_name: mcp-server
+    ports:
+      - "8000:8000"
+    networks:
+      - mcp_gateway
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ─── Config Generation (init containers) ────────────────────
+  configgen-authz-bridge:
+    image: duosecurity/authorization-connector:v1.0.0
+    container_name: configgen-authz-bridge
+    entrypoint: ["/app/ext-authz"]
+    command: ["-config-gen", "-gateway-type", "authz-bridge", "-config-gen-input", "/config/quickstart.conf", "-config-gen-output", "/output/authz-bridge.yaml"]
+    volumes:
+      - ./quickstart.conf:/config/quickstart.conf:ro
+      - ./secrets:/run/secrets:ro
+      - ./config/authz:/output
+    networks:
+      - mcp_gateway
+
+  configgen-agentgateway:
+    image: duosecurity/authorization-connector:v1.0.0
+    container_name: configgen-agentgateway
+    entrypoint: ["/app/ext-authz"]
+    command: ["-config-gen", "-gateway-type", "agentgateway", "-config-gen-input", "/config/quickstart.conf", "-config-gen-output", "/output/agentgateway.conf"]
+    volumes:
+      - ./quickstart.conf:/config/quickstart.conf:ro
+      - ./secrets:/run/secrets:ro
+      - ./config/agentgateway:/output
+    networks:
+      - mcp_gateway
+    profiles:
+      - agentgateway
+
+  # ─── Duo Authorization Connector ───────────────────────────
+  authz-bridge:
+    image: duosecurity/authorization-connector:v1.0.0
+    container_name: authz-bridge
+    entrypoint: ["/app/ext-authz"]
+    command: ["-config", "/config/authz-bridge.yaml"]
+    ports:
+      - "9001:9001"
+    volumes:
+      - ./config/authz:/config:ro
+      - ./secrets:/run/secrets:ro
+    depends_on:
+      configgen-authz-bridge:
+        condition: service_completed_successfully
+    networks:
+      - mcp_gateway
+    healthcheck:
+      test: ["CMD", "/app/ext-authz", "-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ─── Agent Gateway ─────────────────────────────────────────
+  agentgateway:
+    image: cr.agentgateway.dev/agentgateway:0.12.0
+    container_name: agentgateway
+    command: ["--file", "/config/agentgateway.conf"]
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    volumes:
+      - ./config/agentgateway:/config:ro
+    depends_on:
+      configgen-agentgateway:
+        condition: service_completed_successfully
+      authz-bridge:
+        condition: service_healthy
+      mcp-server:
+        condition: service_healthy
+    networks:
+      - mcp_gateway
+    profiles:
+      - agentgateway
+
+networks:
+  mcp_gateway:
+    driver: bridge

@@ -1,0 +1,15 @@
+.env
+secrets/
+gateway/secrets/
+configs/local/
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+dist/
+build/
+.DS_Store
+quickstart.conf
+config/
+*.yaml
+quickstart.example.conf

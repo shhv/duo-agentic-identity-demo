@@ -1,0 +1,31 @@
+# Quickstart Configuration for Duo Agentic Identity Demo
+# Copy this to quickstart.conf and fill in your values.
+
+gateway:
+  url: "http://localhost:3000/mcp"
+  external_url: "https://YOUR-TUNNEL.trycloudflare.com/mcp"
+
+  tls:
+    # Not using TLS directly — Cloudflare tunnel terminates TLS
+
+upstreams:
+  - name: acme-tools
+    url: "http://mcp-server:8000/sse"
+
+oauth:
+  issuer: "https://sso-XXXXXXXX.sso.duosecurity.com/oauth2/XXXXXXXXXXXXXXXX"
+  admin_panel_client_id: "your-mcpgw-tool-list-client-id"
+
+duo:
+  host: "api-XXXXXXXX.duosecurity.com"
+  integration_key: "YOUR_INTEGRATION_KEY"
+  secret_key_file: "/run/secrets/duo_skey"
+  timeout: 30
+  insecure_skip_verify: false
+
+authz_bridge:
+  host: "authz-bridge:9001"
+  address: ":9001"
+  timeout: "10s"
+  tls:
+    enabled: false
