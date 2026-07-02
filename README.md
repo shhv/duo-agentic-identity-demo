@@ -283,3 +283,165 @@ Then use `https://demo.yourdomain.com/mcp` everywhere — it never changes.
 - **MCP Server** — exposes tools (no auth needed, trusts internal network)
 - **Policy** — maps Duo user groups → allowed tools, configured in Duo Admin Panel
 - **Streamable HTTP** — the MCP transport agentgateway uses (POST JSON-RPC, get JSON/SSE back)
+
+---
+
+## What's Happening Underneath
+
+### How the Duo integrations relate to each other
+
+```
+Duo Admin Panel
+├── MCP OIDC Integration (authentication layer)
+│   ├── Defines: token URL, issuer, redirect URIs, Resource URLs
+│   ├── Client 1: admin_panel_client_id → Duo Admin uses to fetch tools
+│   └── Client 2: Agent Client → users/agents authenticate with this
+│
+└── agentgateway Integration (authorization layer)
+    ├── Has: API hostname, Integration key, Secret key
+    │   (authz-bridge uses these to talk to Duo Cloud)
+    │
+    └── "Connect Duo Authorization to Gateway Authentication"
+         ├── Points to: the MCP OIDC integration above
+         ├── Copies over: OAuth Token URL, Client ID, Client Secret
+         └── agentgateway URLs: where the gateway lives (your tunnel URL)
+```
+
+### Why the link between integrations exists
+
+The agentgateway needs to validate tokens. When a user authenticates, they get a token
+from the MCP OIDC integration. agentgateway needs to know "tokens from *which* issuer
+should I trust?" — the link tells it "trust tokens from this specific MCP OIDC integration."
+
+### Why two clients?
+
+| Client | Purpose | Can do |
+|--------|---------|--------|
+| `admin_panel_client_id` | Duo Admin Panel fetches tools for the policy UI | `initialize`, `tools/list` only — never `tools/call` |
+| `Agent Client` | Actual users/agents authenticate with this | Everything — governed by policy |
+
+The admin panel client exists so Duo Admin can discover your tools and show them in the
+policy editor. It's a machine-to-machine credential that never calls tools — just lists them.
+
+### How this scales in production
+
+With 5 MCP servers in production:
+
+```yaml
+# quickstart.conf (or production equivalent)
+upstreams:
+  - name: slack
+    url: "http://slack-mcp:3000/mcp"
+  - name: github
+    url: "http://github-mcp:8080/mcp"
+  - name: jira
+    url: "http://jira-mcp:8080/mcp"
+  - name: salesforce
+    url: "http://salesforce-mcp:8080/mcp"
+  - name: hr-system
+    url: "http://hr-mcp:8000/sse"
+```
+
+You still only need:
+- **1 MCP OIDC integration** (one authentication source)
+- **1 agentgateway integration** (one gateway)
+- **1 link** between them
+- **Same 2 clients** (admin panel + agent)
+
+The 5 upstream MCP servers are just URLs in the gateway's config — Duo Admin doesn't
+need to know about them individually. Tools from all servers appear in one unified
+policy editor, prefixed by upstream name (`slack_post_message`, `github_create_pr`, etc.).
+
+### What flows where
+
+```
+1. User runs agent script
+2. Browser opens → Duo SSO login → token issued (by MCP OIDC integration)
+3. Agent sends token + tool call to agentgateway (via tunnel)
+4. agentgateway validates token audience (must match Resource URLs)
+5. agentgateway asks authz-bridge: "Can this user call this tool?"
+6. authz-bridge calls Duo Cloud API (using agentgateway integration keys)
+7. Duo Cloud checks: user's groups → policy rules → allowed tools list
+8. Response: ALLOW or DENY
+9. If allowed: agentgateway forwards request to upstream MCP server
+10. MCP server executes tool, returns result back through the chain
+```
+
+### What the MCP servers know
+
+Nothing about auth. They receive requests from agentgateway over the internal Docker
+network with no authentication. They don't know who the user is, what group they're in,
+or whether the call was authorized. All of that is handled before the request arrives.
+
+This is the value: **you don't embed auth decisions in each tool — Duo policy controls
+it centrally, and you can change who has access without touching any server code.**
+
+### How agentgateway talks to multiple MCP servers
+
+One agentgateway instance, multiple upstreams — like nginx or any reverse proxy:
+
+```
+One agentgateway container
+  ├── connects to slack-mcp:3000
+  ├── connects to github-mcp:8080
+  ├── connects to jira-mcp:8080
+  └── connects to hr-mcp:8000
+```
+
+agentgateway calls `tools/list` on each upstream, combines them into one list (prefixed
+by upstream name to avoid collisions), and serves the combined list to clients. When Duo
+Admin clicks "Configure policy," it asks agentgateway "what tools do you have?" and gets
+everything in one shot. You don't register each MCP server separately in Duo Admin —
+only the gateway.
+
+There's no `quickstart.conf` in production. That's a demo shortcut that *generates* the
+actual `agentgateway.conf` via configgen. In production you'd write `agentgateway.conf`
+directly (or generate it via Terraform/Helm/Kubernetes ConfigMaps).
+
+---
+
+## Demo vs Production — What's the Same, What's Different
+
+### The stack
+
+| Component | What it is | Open source? |
+|-----------|-----------|-------------|
+| [agentgateway](https://github.com/agentgateway/agentgateway) | MCP proxy/gateway (routing, auth, observability) | Yes — open source by Cisco |
+| authz-bridge (Authorization Connector) | Sidecar that evaluates policies against Duo Cloud | No — Duo commercial product |
+| Duo Cloud + Admin Panel | Policy management, group membership, audit logs | No — Duo SaaS |
+
+agentgateway works standalone as an MCP proxy — no Duo required. Duo adds the
+authorization layer on top via the authz-bridge sidecar.
+
+### What's the same in production
+
+- **agentgateway** — same binary, same config format, same behavior
+- **authz-bridge** — same container, same connection to Duo Cloud
+- **Duo Admin Panel** — same policy UI, same group-to-tool rules
+- **Architecture** — one gateway, one authz-bridge, N upstream MCP servers
+- **Auth flow** — OAuth + PKCE via Duo SSO, tokens validated by gateway
+
+### What's different in this demo vs production
+
+| This demo | Production |
+|-----------|-----------|
+| Free Cloudflare quick tunnel (URL changes every restart) | Load balancer with real TLS cert + stable DNS |
+| `quickstart.conf` → configgen → generated configs | Write `agentgateway.conf` directly or via IaC |
+| `./secrets/duo_skey` file on disk | Kubernetes Secrets, HashiCorp Vault, AWS Secrets Manager |
+| `docker compose up` | Kubernetes, ECS, or VMs with proper orchestration |
+| Our mock MCP server (Python dicts in memory) | Real MCP servers (Slack, GitHub, Jira, Salesforce, internal APIs) |
+| Manual browser login per agent run | AI clients (Claude Code, Copilot) handle auth natively |
+| Custom Python MCP client script | Use official MCP SDK or built-in client support |
+
+### In production you would NOT need
+
+- This repo's `mcp-server/` — you'd use real MCP servers
+- This repo's `agents/` scripts — your AI tool (Claude Code, etc.) IS the client
+- The `cloudflared` container — you'd have a real ingress
+- The `quickstart.conf` — you'd manage configs with your IaC tooling
+
+### In production you WOULD keep
+
+- The agentgateway + authz-bridge containers (same images)
+- The Duo Admin configuration (same integrations, same policies)
+- The pattern: one gateway → many upstream MCP servers → policy in Duo
