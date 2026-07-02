@@ -99,11 +99,14 @@ Duo Admin → Reports shows every authentication event against the MCP OIDC inte
 
 ### Step 4: Start the Cloudflare Tunnel
 
+> **Run this in a separate terminal tab** — it blocks the terminal while running.
+
 ```bash
 cloudflared tunnel --url http://localhost:3000
 ```
 
-Copy the generated URL (e.g. `https://random-words.trycloudflare.com`).
+The URL changes every time you restart (free tier limitation). Copy the generated URL
+(e.g. `https://random-words.trycloudflare.com`).
 
 Now go back to Duo Admin and paste `https://<your-url>/mcp` into:
 - MCP OIDC integration → General tab → **Resource URLs**
