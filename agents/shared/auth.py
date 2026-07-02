@@ -129,16 +129,17 @@ async def get_access_token(
 
     auth_code = _AUTH_RESULT["code"]
 
-    # Exchange code for token (confidential client sends secret too)
+    # Exchange code for token
     client_secret = os.environ.get("OAUTH_CLIENT_SECRET", "")
     token_data = {
         "grant_type": "authorization_code",
         "code": auth_code,
         "redirect_uri": redirect_uri,
         "client_id": cid,
-        "client_secret": client_secret,
         "code_verifier": verifier,
     }
+    if client_secret:
+        token_data["client_secret"] = client_secret
     if resource:
         token_data["resource"] = resource
 
