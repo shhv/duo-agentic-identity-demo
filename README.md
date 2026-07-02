@@ -206,13 +206,36 @@ cd agents
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 export $(grep -v '^#' ../.env | xargs)
-
-# Run as HR user
-python3 hr_agent.py    # Log in as HR Team user → 6/8 allowed
-
-# Run as Finance user
-python3 finance_agent.py  # Log in as Finance Team user → 6/8 allowed
 ```
+
+**Test 1: Pre-configured client (HR user)**
+```bash
+python3 hr_agent.py
+```
+- Opens browser → log in as an HR Team user
+- Script authenticates, connects to agentgateway, tries all 8 tools
+- Expected: 6 allowed (4 reads + 2 HR writes), 2 denied (finance writes)
+
+**Test 2: Pre-configured client (Finance user)**
+```bash
+python3 finance_agent.py
+```
+- Opens browser → log in as a Finance Team user
+- Expected: 6 allowed (4 reads + 2 finance writes), 2 denied (HR writes)
+
+**Test 3: Dynamic Client Registration**
+```bash
+python3 dcr_agent.py
+```
+- Registers a brand new OAuth client with Duo SSO on the fly (no admin setup)
+- Opens browser → log in as any user
+- Proves: policy follows the user, not the client — even unknown clients are governed
+- Check Duo Admin → MCP OIDC integration → Clients tab → DCR section — you'll see the new client appear
+
+**After each test, check:**
+- Duo Admin → **Reports → Client Authorization Log** — shows every tool call with allow/deny
+- Terminal output — color-coded ALLOWED/DENIED per tool
+- `docker logs authz-bridge` — shows the raw policy decisions and group lookups
 
 ---
 
