@@ -59,6 +59,11 @@ You need two confidential clients: one for the admin panel (tool fetching) and o
 
 ![Clients tab](screenshots/04-clients-tab.png)
 
+### DCR Clients — dynamically registered clients appear here
+After running `dcr_agent.py`, the self-registered client shows up under Public Clients → DCR Clients tab.
+
+![DCR Client Registered](screenshots/05-dcr-client-registered.png)
+
 ### Authentication Log — shows all agent logins
 Duo Admin → Reports shows every authentication event against the MCP OIDC integration.
 
