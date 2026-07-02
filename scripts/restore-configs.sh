@@ -1,26 +1,73 @@
 #!/usr/bin/env bash
-# Restore configs from configs/local/ for repeat use.
-# If no saved configs exist, walks the user through initial setup.
+# Restore configs and start Cloudflare tunnel for the demo.
+# - First-time: walks user through setup
+# - Repeat use: restores saved configs, starts tunnel, shows where to update URL
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-if [ ! -f "$DIR/configs/local/quickstart.conf" ]; then
+# ─── Start Cloudflare tunnel in background ───
+start_tunnel() {
+    echo "─── Starting Cloudflare Tunnel ───"
+    echo ""
+    echo "⚠  NOTE: We're using a free quick tunnel. The URL changes every time."
+    echo "  For a stable URL, set up a named tunnel (see README)."
+    echo ""
+
+    # Kill any existing tunnel
+    pkill -f "cloudflared tunnel" 2>/dev/null || true
+    sleep 1
+
+    # Start in background, capture logs
+    cloudflared tunnel --url http://localhost:3000 > /tmp/cloudflared.log 2>&1 &
+    TUNNEL_PID=$!
+    echo "  Tunnel starting (PID: $TUNNEL_PID)..."
+
+    # Wait for URL to appear in logs
+    for i in $(seq 1 15); do
+        TUNNEL_URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log 2>/dev/null | head -1)
+        if [ -n "$TUNNEL_URL" ]; then
+            break
+        fi
+        sleep 1
+    done
+
+    if [ -z "$TUNNEL_URL" ]; then
+        echo "  ✗ Could not detect tunnel URL. Check /tmp/cloudflared.log"
+        echo "  You may need to run: cloudflared tunnel --url http://localhost:3000"
+        exit 1
+    fi
+
+    GATEWAY_URL="${TUNNEL_URL}/mcp"
+    echo ""
+    echo "  ┌─────────────────────────────────────────────────────────────┐"
+    echo "  │ Tunnel URL: $TUNNEL_URL"
+    echo "  │ Gateway URL: $GATEWAY_URL"
+    echo "  └─────────────────────────────────────────────────────────────┘"
+    echo ""
+    echo "  ⚠  UPDATE THESE in Duo Admin Panel:"
+    echo "     1. Applications → MCP OIDC integration → General → Resource URLs"
+    echo "        → set to: $GATEWAY_URL"
+    echo "     2. Applications → agentgateway integration → agentgateway URLs"
+    echo "        → set to: $GATEWAY_URL"
+    echo ""
+    read -rp "  Press Enter after updating Duo Admin (or Ctrl+C to abort)..."
+    echo ""
+}
+
+# ─── First-time setup ───
+first_time_setup() {
     echo "No saved configs found. Running first-time setup..."
     echo ""
     echo "You'll need these from Duo Admin Panel:"
     echo "  - MCP OIDC integration: OAuth URLs, Agent Client ID + Secret"
     echo "  - agentgateway integration: API hostname, Integration key, Secret key"
-    echo "  - A Cloudflare tunnel URL (run: cloudflared tunnel --url http://localhost:3000)"
     echo ""
     read -rp "Press Enter when ready, or Ctrl+C to exit..."
     echo ""
 
-    # Collect values
-    echo "─── Cloudflare Tunnel ───"
-    read -rp "Tunnel URL (e.g. https://random-words.trycloudflare.com): " TUNNEL_URL
-    GATEWAY_URL="${TUNNEL_URL}/mcp"
-    echo ""
+    # Start tunnel first so we have the URL
+    start_tunnel
 
     echo "─── Duo MCP OIDC Integration (General tab) ───"
     read -rp "OAuth Authorize URL: " OAUTH_AUTHORIZE_URL
@@ -33,7 +80,7 @@ if [ ! -f "$DIR/configs/local/quickstart.conf" ]; then
     echo ""
     echo ""
 
-    echo "─── MCPGW Tool List Client ID (for admin panel, Clients tab → first client) ───"
+    echo "─── MCPGW Tool List Client ID (Clients tab → first client) ───"
     read -rp "Admin Panel Client ID: " ADMIN_PANEL_CLIENT_ID
     echo ""
 
@@ -111,54 +158,44 @@ EOF
 
     echo ""
     echo "✓ All configs generated and saved to configs/local/"
-    echo "✓ Run: COMPOSE_PROFILES=agentgateway docker compose up -d"
+    echo "✓ Run: make up"
+}
+
+# ─── Repeat use: restore and update tunnel ───
+repeat_setup() {
+    echo "─── Restoring saved configs ───"
+    cp "$DIR/configs/local/quickstart.conf" "$DIR/quickstart.conf"
+    cp "$DIR/configs/local/.env" "$DIR/.env"
+    mkdir -p "$DIR/secrets"
+    cp "$DIR/configs/local/duo_skey" "$DIR/secrets/duo_skey"
+    chmod 600 "$DIR/secrets/duo_skey"
+    echo "  ✓ Configs restored from configs/local/"
     echo ""
-    echo "Don't forget to set in Duo Admin Panel:"
-    echo "  - MCP OIDC → Resource URLs: ${GATEWAY_URL}"
-    echo "  - agentgateway → agentgateway URLs: ${GATEWAY_URL}"
-    exit 0
-fi
 
-# ─── Configs exist: restore them ───
+    # Start tunnel and get new URL
+    start_tunnel
 
-cp "$DIR/configs/local/quickstart.conf" "$DIR/quickstart.conf"
-cp "$DIR/configs/local/.env" "$DIR/.env"
-mkdir -p "$DIR/secrets"
-cp "$DIR/configs/local/duo_skey" "$DIR/secrets/duo_skey"
-chmod 600 "$DIR/secrets/duo_skey"
-
-echo "✓ Configs restored from configs/local/"
-echo ""
-
-# Check if tunnel URL needs updating
-CURRENT_URL=$(grep "GATEWAY_URL" "$DIR/.env" | cut -d= -f2)
-echo "Current tunnel URL: $CURRENT_URL"
-echo ""
-read -rp "Is the tunnel URL still correct? (y/N): " CORRECT
-
-if [[ "$CORRECT" != "y" && "$CORRECT" != "Y" ]]; then
-    read -rp "New tunnel URL (e.g. https://new-words.trycloudflare.com): " NEW_TUNNEL
-    NEW_GATEWAY="${NEW_TUNNEL}/mcp"
-
-    # Update .env
-    sed -i '' "s|GATEWAY_URL=.*|GATEWAY_URL=${NEW_GATEWAY}|" "$DIR/.env"
-
-    # Update quickstart.conf
-    sed -i '' "s|external_url:.*|external_url: \"${NEW_GATEWAY}\"|" "$DIR/quickstart.conf"
+    # Update configs with new URL
+    sed -i '' "s|GATEWAY_URL=.*|GATEWAY_URL=${GATEWAY_URL}|" "$DIR/.env"
+    sed -i '' "s|external_url:.*|external_url: \"${GATEWAY_URL}\"|" "$DIR/quickstart.conf"
 
     # Save updated copies
     cp "$DIR/quickstart.conf" "$DIR/configs/local/quickstart.conf"
     cp "$DIR/.env" "$DIR/configs/local/.env"
 
+    echo "  ✓ Configs updated with new tunnel URL"
     echo ""
-    echo "✓ Updated tunnel URL to: ${NEW_GATEWAY}"
-    echo ""
-    echo "⚠  Also update in Duo Admin Panel:"
-    echo "  1. MCP OIDC integration → General → Resource URLs"
-    echo "  2. agentgateway integration → agentgateway URLs"
-    echo ""
-    echo "Then restart: docker compose down && COMPOSE_PROFILES=agentgateway docker compose up -d"
+    echo "  Next: make up"
+}
+
+# ─── Main ───
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║   Duo Agentic Identity Demo — Setup                        ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
+
+if [ -f "$DIR/configs/local/quickstart.conf" ]; then
+    repeat_setup
 else
-    echo ""
-    echo "✓ Ready. Run: COMPOSE_PROFILES=agentgateway docker compose up -d"
+    first_time_setup
 fi
