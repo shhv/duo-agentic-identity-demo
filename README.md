@@ -532,3 +532,150 @@ authorization layer on top via the authz-bridge sidecar.
 - The agentgateway + authz-bridge containers (same images)
 - The Duo Admin configuration (same integrations, same policies)
 - The pattern: one gateway → many upstream MCP servers → policy in Duo
+
+---
+
+## Deep Dive: Full Request Flow & Failure Points
+
+For those who want to understand exactly what happens on the wire and where things can break.
+
+### Step 1: OAuth Token Acquisition
+
+```
+Agent script starts
+       │
+       ├── Builds authorize URL with:
+       │     • client_id
+       │     • redirect_uri (http://localhost:8085/callback)
+       │     • scope (openid)
+       │     • PKCE challenge
+       │     • resource (GATEWAY_URL)  ← MUST match Resource URLs in Duo Admin
+       │
+       ├── Opens browser → Duo SSO login page
+       │
+       │   ❌ Browser doesn't open → manual URL printed to terminal
+       │   ❌ Duo SSO error → client_id not found or redirect_uri not registered
+       │
+       ├── User authenticates (username + password + Duo 2FA)
+       │
+       │   ❌ User not in Duo → "User not found"
+       │   ❌ 2FA timeout → script times out after 120s
+       │
+       ├── Duo redirects → http://localhost:8085/callback?code=XXXX
+       │
+       │   ❌ Port 8085 in use → callback server can't bind
+       │
+       ├── Script exchanges code for token:
+       │     • code + code_verifier (PKCE)
+       │     • client_id + client_secret
+       │     • resource (GATEWAY_URL)  ← MUST match again
+       │
+       │   ❌ "InvalidAudience" → resource doesn't match Duo Admin Resource URLs
+       │   ❌ "invalid_client" → wrong client_id/secret
+       │   ❌ "invalid_grant" → code expired or reused
+       │
+       ▼
+   ACCESS TOKEN (JWT) — contains: sub (user hash), aud (resource), iss (Duo SSO)
+```
+
+### Step 2: Connect to agentgateway
+
+```
+Agent sends: POST {GATEWAY_URL}
+             Headers: Authorization: Bearer {token}
+             Body: {"jsonrpc":"2.0","method":"initialize",...}
+       │
+       ├── Request hits Cloudflare edge → forwards to localhost:3000
+       │
+       │   ❌ Tunnel not running → connection refused or 502
+       │   ❌ Tunnel URL changed → token audience won't match → 401
+       │
+       ├── agentgateway validates JWT:
+       │     • Issuer matches oauth.issuer in quickstart.conf?
+       │     • Audience matches gateway.external_url?
+       │     • Signature valid? (fetches JWKS from issuer)
+       │     • Not expired?
+       │
+       │   ❌ 401 "invalid token" → issuer mismatch in quickstart.conf
+       │   ❌ 401 "invalid audience" → external_url ≠ resource in token
+       │      (This is the #1 failure after tunnel restart)
+       │
+       ▼
+   TOKEN VALID — gateway extracts subject (user hash)
+```
+
+### Step 3: Authorization check (every request)
+
+```
+agentgateway → gRPC → authz-bridge:9001
+               Sends: subject, server_id, mcp_method, tool_name
+       │
+       ├── authz-bridge calls Duo Cloud API:
+       │     • API host: api-XXXX.duosecurity.com
+       │     • Auth: integration_key + secret_key
+       │     • Sends: subject hash
+       │     • Gets back: user's groups + policy evaluation
+       │
+       │   ❌ authz-bridge not running → gateway returns 500
+       │   ❌ Wrong API hostname/keys → "duo health check failed" on startup
+       │   ❌ Duo API timeout → network issue (rare)
+       │
+       ├── Duo Cloud policy engine evaluates:
+       │     subject hash → user identity → groups → match policy rules → allowed tools
+       │
+       │   ❌ "no capabilities allowed" → user not in any group with a rule
+       │   ❌ Empty reason, deny → subject unresolvable (client credentials)
+       │
+       ├── Returns to agentgateway:
+       │     • result: allow/deny
+       │     • allowed_tools: ["acme-tools_hr_get_employee", ...]
+       │
+       ▼
+   DECISION MADE
+```
+
+### Step 4: Tool listing and execution
+
+```
+tools/list:
+       ├── agentgateway → mcp-server returns all 8 tools
+       ├── agentgateway FILTERS: only returns tools in allowed_tools
+       │   ❌ 0 tools visible → policy returned empty allowed_tools
+       ▼
+   Agent sees only permitted tools
+
+tools/call:
+       ├── IF tool in allowed_tools:
+       │     ├── Forward to mcp-server → execute → return result
+       │     │   ❌ mcp-server down → 502/503
+       │     ▼   ALLOWED
+       │
+       ├── IF tool NOT in allowed_tools:
+       │     ├── Return 403 immediately (never reaches mcp-server)
+       │     ▼   DENIED
+```
+
+### The #1 Gotcha: Tunnel URL Must Match in 5 Places
+
+| # | Location | Value |
+|---|----------|-------|
+| 1 | `quickstart.conf` → `gateway.external_url` | `https://<tunnel>/mcp` |
+| 2 | `.env` → `GATEWAY_URL` | `https://<tunnel>/mcp` |
+| 3 | Duo Admin → MCP OIDC → **Resource URLs** | `https://<tunnel>/mcp` |
+| 4 | Duo Admin → agentgateway → **agentgateway URLs** | `https://<tunnel>/mcp` |
+| 5 | Token request `resource` param (auto from GATEWAY_URL) | `https://<tunnel>/mcp` |
+
+If **any one** is stale (old tunnel URL), you get 401 or empty policy.
+
+### Failure Matrix
+
+| Symptom | Root Cause | Fix |
+|---------|-----------|-----|
+| Browser auth works, all tools denied | Tunnel URL changed, configs stale | Update all 5 places, `make down && make up` |
+| "InvalidAudience" on token exchange | `resource` param ≠ Resource URLs in Duo | Match GATEWAY_URL everywhere |
+| "no capabilities allowed" | User not in a group with a policy rule | Add user to HR/Finance Team in Duo Admin |
+| 0 tools, empty deny reason | Client credentials (no user identity) | Not supported yet — use Authorization Code |
+| Connection refused | Tunnel died or containers down | Restart cloudflared + `make up` |
+| All tools "Forbidden" even with policy | Missing `acme-tools_` prefix in policy | Tool names = upstream_name + `_` + tool_name |
+| Auth timeout (120s) | Port 8085 blocked or in use | Kill other process on :8085 |
+| Works for one user, not another | Second user not in any group | Duo Admin → Users → add to group |
