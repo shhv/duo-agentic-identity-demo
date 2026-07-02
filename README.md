@@ -114,28 +114,46 @@ Now go back to Duo Admin and paste `https://<your-url>/mcp` into:
 
 ### Step 5: Configure This Project
 
+The easiest way is to run the interactive setup script — it asks for all values and generates everything:
+
 ```bash
 cd duo-agentic-identity-demo
-
-# Create secrets directory and add Duo secret key
-mkdir -p secrets
-echo -n "YOUR_DUO_SECRET_KEY" > secrets/duo_skey
-chmod 600 secrets/duo_skey
+make setup
 ```
 
-Edit `quickstart.conf`:
-- `gateway.external_url` → your tunnel URL + `/mcp`
-- `oauth.issuer` → your Duo SSO issuer URL
-- `oauth.admin_panel_client_id` → MCPGW Tool List Client's Client ID
-- `duo.host` → API hostname from agentgateway integration
-- `duo.integration_key` → Integration key from agentgateway integration
+This will prompt for your Duo credentials and automatically create:
+- `quickstart.conf` (gateway config)
+- `.env` (agent config)
+- `secrets/duo_skey` (secret key file)
 
-Edit `.env`:
-- `OAUTH_AUTHORIZE_URL` → `https://sso-XXXX.sso.duosecurity.com/oauth2/XXXX/authorize`
-- `OAUTH_TOKEN_URL` → `https://sso-XXXX.sso.duosecurity.com/oauth2/XXXX/token`
-- `OAUTH_CLIENT_ID` → **Agent Client** Client ID (NOT the admin panel one)
-- `OAUTH_CLIENT_SECRET` → Agent Client Secret
-- `GATEWAY_URL` → your tunnel URL + `/mcp`
+**Or configure manually:**
+
+1. Copy the templates:
+   ```bash
+   cp quickstart.conf.example quickstart.conf
+   cp .env.example .env
+   ```
+
+2. Create the secret key file — this is the **Secret key** from Duo Admin → Applications → your **agentgateway** integration → **Details** section (the one next to Integration key and API hostname):
+   ```bash
+   mkdir -p secrets
+   echo -n "paste-agentgateway-secret-key-here" > secrets/duo_skey
+   chmod 600 secrets/duo_skey
+   ```
+
+3. Edit `quickstart.conf` with your values:
+   - `gateway.external_url` → your tunnel URL + `/mcp`
+   - `oauth.issuer` → your Duo SSO issuer URL (Token URL without `/token`)
+   - `oauth.admin_panel_client_id` → MCPGW Tool List Client's Client ID
+   - `duo.host` → API hostname from agentgateway integration
+   - `duo.integration_key` → Integration key from agentgateway integration
+
+4. Edit `.env` with your values:
+   - `OAUTH_AUTHORIZE_URL` → `https://sso-XXXX.sso.duosecurity.com/oauth2/XXXX/authorize`
+   - `OAUTH_TOKEN_URL` → `https://sso-XXXX.sso.duosecurity.com/oauth2/XXXX/token`
+   - `OAUTH_CLIENT_ID` → **Agent Client** Client ID (NOT the admin panel one)
+   - `OAUTH_CLIENT_SECRET` → Agent Client Secret
+   - `GATEWAY_URL` → your tunnel URL + `/mcp`
 
 ### Step 6: Start Services
 
