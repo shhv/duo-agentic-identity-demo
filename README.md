@@ -40,6 +40,19 @@ MCP Server (:8000) — 8 tools, no auth, mock data
 - Duo Premier subscription with Agentic Identity alpha access
 - `cloudflared` CLI (`brew install cloudflared`)
 
+### What you DON'T need
+
+> This demo runs entirely from your laptop with only a **Duo Admin Panel login**. No cloud infrastructure required.
+
+- No AWS / GCP / Azure account
+- No public server or VM
+- No purchased domain name or DNS setup
+- No SSL certificate from a CA
+- No Kubernetes cluster
+- No corporate VPN or firewall changes
+
+Cloudflare's free quick tunnel gives you a public HTTPS endpoint pointing back to localhost — Duo just needs a reachable URL.
+
 ---
 
 ## Screenshots
