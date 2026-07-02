@@ -42,6 +42,30 @@ MCP Server (:8000) — 8 tools, no auth, mock data
 
 ---
 
+## Screenshots
+
+### Duo Admin — MCP Servers page
+Your gateway appears here after services are running. Click "Configure policy" to set up rules.
+
+![MCP Servers page](screenshots/02-mcp-servers-page.png)
+
+### Configure Policy — JSON rules + tool list
+Paste the JSON policy on the left. The tool drawer on the right shows all 8 tools discovered from your MCP server.
+
+![Configure Policy](screenshots/03-configure-policy.png)
+
+### Clients tab — Admin Panel + Agent Client
+You need two confidential clients: one for the admin panel (tool fetching) and one for agent authentication.
+
+![Clients tab](screenshots/04-clients-tab.png)
+
+### Authentication Log — shows all agent logins
+Duo Admin → Reports shows every authentication event against the MCP OIDC integration.
+
+![Auth Log](screenshots/01-duo-auth-log.png)
+
+---
+
 ## First-Time Setup
 
 ### Step 1: Duo Admin — Create MCP OIDC Integration
