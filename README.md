@@ -106,6 +106,12 @@ Duo Admin → Reports shows every authentication event against the MCP OIDC inte
 
 > **Run this in a separate terminal tab** — it blocks the terminal while running.
 
+With Cloudflare Tunnel you **don't need**:
+- An internet-resolvable fully qualified DNS entry
+- An SSL certificate purchased from a commercial certificate authority (CA)
+
+Cloudflared creates an outbound-only connection from your machine to Cloudflare's edge — Cloudflare handles DNS and TLS for you. Your local service stays plain HTTP on localhost.
+
 ```bash
 cloudflared tunnel --url http://localhost:3000
 ```
