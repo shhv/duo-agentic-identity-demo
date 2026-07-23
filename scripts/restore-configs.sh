@@ -16,16 +16,17 @@ start_tunnel() {
 
     # Kill any existing tunnel
     pkill -f "cloudflared tunnel" 2>/dev/null || true
-    sleep 1
+    sleep 2
 
     # Start in background, capture logs
     cloudflared tunnel --url http://localhost:3000 > /tmp/cloudflared.log 2>&1 &
     TUNNEL_PID=$!
     echo "  Tunnel starting (PID: $TUNNEL_PID)..."
 
-    # Wait for URL to appear in logs
-    for i in $(seq 1 15); do
-        TUNNEL_URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log 2>/dev/null | head -1)
+    # Wait for URL to appear in logs (up to 30s)
+    TUNNEL_URL=""
+    for i in $(seq 1 30); do
+        TUNNEL_URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log 2>/dev/null | head -1 || true)
         if [ -n "$TUNNEL_URL" ]; then
             break
         fi
