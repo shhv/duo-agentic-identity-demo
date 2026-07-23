@@ -7,6 +7,7 @@ restore:
 	@bash scripts/restore-configs.sh
 
 up:
+	@docker info > /dev/null 2>&1 || (echo ""; echo "  ✗ Docker is not running. Please start Docker Desktop and try again."; echo ""; exit 1)
 	COMPOSE_PROFILES=agentgateway docker compose up -d --build
 	@echo ""
 	@sleep 5

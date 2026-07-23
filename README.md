@@ -183,6 +183,13 @@ This will prompt for your Duo credentials and automatically create:
 
 ### Step 6: Start Services
 
+> **Note:** Make sure Docker Desktop is running before proceeding.
+
+```bash
+make up
+```
+
+Or manually:
 ```bash
 COMPOSE_PROFILES=agentgateway docker compose up -d
 ```
