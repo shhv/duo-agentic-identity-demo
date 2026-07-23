@@ -68,8 +68,8 @@ services:
     container_name: agentgateway
     command: ["--file", "/config/agentgateway.conf"]
     ports:
-      - "3000:3000"
-      - "3001:3001"
+      - "3100:3000"
+      - "3101:3001"
     volumes:
       - ./config/agentgateway:/config:ro
     depends_on:

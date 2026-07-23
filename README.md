@@ -126,7 +126,7 @@ With Cloudflare Tunnel you **don't need**:
 Cloudflared creates an outbound-only connection from your machine to Cloudflare's edge — Cloudflare handles DNS and TLS for you. Your local service stays plain HTTP on localhost.
 
 ```bash
-cloudflared tunnel --url http://localhost:3000
+cloudflared tunnel --url http://localhost:3100
 ```
 
 The URL changes every time you restart (free tier limitation). Copy the generated URL
@@ -281,17 +281,21 @@ python3 dcr_agent.py
 
 The Cloudflare quick tunnel URL changes every time you restart it. When that happens:
 
-### Update these 3 places:
+### Update these places in Duo Admin:
 
-1. **`quickstart.conf`** → update `gateway.external_url`
-2. **`.env`** → update `GATEWAY_URL`
-3. **Duo Admin Panel** (both of these):
-   - MCP OIDC integration → General tab → **Resource URLs**
-   - agentgateway integration → **agentgateway URLs**
+1. **MCP OIDC integration → General tab → Resource URLs** → new tunnel URL + `/mcp`
+2. **agentgateway integration → agentgateway URLs** → new tunnel URL + `/mcp` and gateway name
+
+> **Tip: Keep the Gateway name the same across re-runs.** The gateway name is used for mapping under MCP Gateways and Servers. If you change the name, you'll have to recreate all your scope rules. Reuse the same gateway name (e.g. `duo-demo`) and just update the URL.
+>
+> **If you get runtime errors (403 / "no capabilities allowed"):** add the new URL values in Duo Admin and create a new scope rule under MCP Gateways and Servers for the new gateway name.
+
+> **Why scope rules break:** Duo authorization policies are tied to the gateway name. When the URL changes and you use a new gateway name, existing scope rules no longer apply. This is the #1 gotcha with free quick tunnels. To avoid this entirely, use a [named Cloudflare tunnel](#using-a-named-tunnel) with a stable URL.
 
 ### Then restart:
 
 ```bash
+make setup   # starts new tunnel, updates local configs automatically
 make down && make up
 ```
 
@@ -367,7 +371,7 @@ Then use `https://demo.yourdomain.com/mcp` everywhere — it never changes.
 | "InvalidAudience" in agentgateway logs | Token doesn't have the gateway URL as audience | Add `resource` param to auth request (already in code) — verify `GATEWAY_URL` matches Resource URLs in Duo |
 | Tools list works but calls return 500 "Unknown tool" | Policy denies the tool for this user | This IS the enforcement working — expected for denied tools |
 | 405 Method Not Allowed on upstream | MCP server doesn't handle POST on the SSE endpoint | Already fixed in this repo — ensure MCP server is rebuilt |
-| Tunnel unreachable | Quick tunnel died | Restart `cloudflared tunnel --url http://localhost:3000` and update URLs |
+| Tunnel unreachable | Quick tunnel died | Restart `cloudflared tunnel --url http://localhost:3100` and update URLs |
 | "Authentication timed out" | Browser redirect didn't reach localhost:8085 | Check `http://localhost:8085/callback` is in Sign-In Redirect URLs |
 
 ## Key Concepts
@@ -592,7 +596,7 @@ Agent sends: POST {GATEWAY_URL}
              Headers: Authorization: Bearer {token}
              Body: {"jsonrpc":"2.0","method":"initialize",...}
        │
-       ├── Request hits Cloudflare edge → forwards to localhost:3000
+       ├── Request hits Cloudflare edge → forwards to localhost:3100
        │
        │   ❌ Tunnel not running → connection refused or 502
        │   ❌ Tunnel URL changed → token audience won't match → 401
