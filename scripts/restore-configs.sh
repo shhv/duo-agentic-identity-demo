@@ -19,7 +19,7 @@ start_tunnel() {
     sleep 2
 
     # Start in background, capture logs
-    cloudflared tunnel --url http://localhost:3000 > /tmp/cloudflared.log 2>&1 &
+    cloudflared tunnel --url http://localhost:3100 > /tmp/cloudflared.log 2>&1 &
     TUNNEL_PID=$!
     echo "  Tunnel starting (PID: $TUNNEL_PID)..."
 
@@ -35,7 +35,7 @@ start_tunnel() {
 
     if [ -z "$TUNNEL_URL" ]; then
         echo "  ✗ Could not detect tunnel URL. Check /tmp/cloudflared.log"
-        echo "  You may need to run: cloudflared tunnel --url http://localhost:3000"
+        echo "  You may need to run: cloudflared tunnel --url http://localhost:3100"
         exit 1
     fi
 

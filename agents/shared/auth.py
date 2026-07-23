@@ -5,6 +5,8 @@ import hashlib
 import http.server
 import os
 import secrets
+import socket
+import subprocess
 import threading
 import urllib.parse
 import webbrowser
@@ -65,6 +67,7 @@ async def get_access_token(
 
     Opens a browser for the user to authenticate with Duo SSO, captures the
     callback on a local HTTP server, then exchanges the code for a token.
+    Always forces a fresh login prompt so the user can choose which account.
 
     Environment variables (used as fallbacks):
       - OAUTH_AUTHORIZE_URL: Duo SSO authorization endpoint
@@ -99,10 +102,15 @@ async def get_access_token(
     }
     if resource:
         params["resource"] = resource
+    params["prompt"] = "login"
     full_auth_url = f"{auth_url}?{urllib.parse.urlencode(params)}"
+
+    # Kill any stale process on the callback port
+    subprocess.run(f"lsof -ti :{port} | xargs kill 2>/dev/null", shell=True)
 
     # Start local callback server — serve until we get the auth code
     server = http.server.HTTPServer(("localhost", port), _CallbackHandler)
+    server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.timeout = 120
 
     def serve_until_result():
