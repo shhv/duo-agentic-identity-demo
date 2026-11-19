@@ -7,6 +7,7 @@ on-the-fly with Duo SSO, then authenticates a user through the new client.
 
 import asyncio
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -30,7 +31,11 @@ from shared.output import (
 load_dotenv()
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "https://your-tunnel.trycloudflare.com/mcp")
-DCR_URL = "https://sso-xxxxxxxx.sso.duosecurity.com/oauth2/XXXXXXXXXXXXXXXXXXXX/register"
+# DCR registration endpoint — shown on the MCP OIDC integration page (Registration URL).
+# Defaults to OAUTH_TOKEN_URL with /token replaced by /register.
+DCR_URL = os.environ.get("OAUTH_REGISTER_URL") or re.sub(
+    r"/token/?$", "/register", os.environ.get("OAUTH_TOKEN_URL", "")
+)
 
 TOOL_CALLS = [
     ("acme-tools_hr_get_employee", {"employee_id": "EMP001"}),
@@ -63,6 +68,9 @@ async def register_client() -> tuple[str, str]:
         "token_endpoint_auth_method": "client_secret_post",
         "scope": "openid",
     }
+
+    if not DCR_URL:
+        raise ValueError("Set OAUTH_REGISTER_URL (or OAUTH_TOKEN_URL) in .env")
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(DCR_URL, json=metadata)
