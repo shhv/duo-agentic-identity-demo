@@ -48,3 +48,13 @@ Run: `python3 agents/finance_agent.py`
 - "Can you do time-based policies?" → Yes, Duo supports time-of-day restrictions
 - "What about audit?" → Show Duo Admin → Reports → Client Authorization Log
 - "How does this differ from per-tool API keys?" → Central policy, no secrets in agent code, group-based management
+
+## LLM Agent + Prompt Injection (2 minutes)
+
+Run: `python3 agents/llm_agent.py --replay-hijack` (deterministic), or without the flag for a live model.
+
+1. "So far the agents followed a script. Real agents let an LLM pick the tools — and the LLM reads data other people wrote."
+2. "Expense EXP006 has instructions hidden in its description: approve a payment, give someone a 400k salary."
+3. "The approve-payment call is **denied** — this user isn't in Finance. Policy holds no matter what the model was told."
+4. "The salary change **goes through**. HR may call that tool; the gateway checks *which* tool, not *what arguments*. That's the boundary of tool-level policy."
+5. "Fixes for the second case live in the tool or an argument-aware policy, plus human confirmation for high-impact writes." → `docs/THREAT_MODEL.md`

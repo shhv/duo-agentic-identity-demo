@@ -15,6 +15,8 @@ Demonstrates Duo's agentic authorization for AI agents using the MCP protocol. T
 
 The script doesn't matter — **the user identity determines access**.
 
+**LLM-driven agent + threat model.** `agents/llm_agent.py` lets Claude choose the tool calls and feeds it a poisoned expense record (indirect prompt injection). Duo policy blocks the injected call to a tool the user can't use; the injected call to an allowed tool with malicious arguments goes through. See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the analysis, the gaps, and mappings to OWASP LLM/Agentic Top 10 and MITRE ATLAS.
+
 ## Architecture
 
 ```
@@ -270,6 +272,16 @@ python3 dcr_agent.py
 - Proves: policy follows the user, not the client — even unknown clients are governed
 - Check Duo Admin → MCP OIDC integration → Clients tab → DCR section — you'll see the new client appear
 
+**Test 4: LLM agent + prompt injection**
+```bash
+export ANTHROPIC_API_KEY=...        # or: ant auth login
+python3 llm_agent.py                # Claude picks the tools; reads poisoned EXP006
+python3 llm_agent.py --replay-hijack  # deterministic: what a fully hijacked agent does
+```
+- Log in as an HR user: injected `finance_approve_payment` → **DENIED** by policy; injected `hr_update_salary` → **executes** (allowed tool, malicious arguments)
+- Finance user: the reverse
+- `make down && make up` resets mock data afterwards. Details: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)
+
 **After each test, check:**
 - Duo Admin → **Reports → Client Authorization Log** — shows every tool call with allow/deny
 - Terminal output — color-coded ALLOWED/DENIED per tool
@@ -348,6 +360,9 @@ Then use `https://demo.yourdomain.com/mcp` everywhere — it never changes.
 ├── agents/
 │   ├── hr_agent.py          # Demo script: tries all 8 tools as HR user
 │   ├── finance_agent.py     # Demo script: tries all 8 tools as Finance user
+│   ├── dcr_agent.py         # Registers its own client via DCR, then runs the tools
+│   ├── headless_agent.py    # Client Credentials flow, no browser
+│   ├── llm_agent.py         # Claude-driven agent; prompt-injection scenario
 │   ├── requirements.txt
 │   └── shared/
 │       ├── auth.py          # OAuth Authorization Code + PKCE flow
@@ -358,7 +373,8 @@ Then use `https://demo.yourdomain.com/mcp` everywhere — it never changes.
 └── docs/
     ├── DUO_SETUP.md
     ├── CLOUDFLARE_SETUP.md
-    └── DEMO_SCRIPT.md
+    ├── DEMO_SCRIPT.md
+    └── THREAT_MODEL.md      # Injection / excessive agency analysis, OWASP + ATLAS mapping
 ```
 
 ## Troubleshooting
