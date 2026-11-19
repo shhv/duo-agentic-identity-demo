@@ -304,12 +304,17 @@ The Cloudflare quick tunnel URL changes every time you restart it. When that hap
 
 > **Why scope rules break:** Duo authorization policies are tied to the gateway name. When the URL changes and you use a new gateway name, existing scope rules no longer apply. This is the #1 gotcha with free quick tunnels. To avoid this entirely, use a [named Cloudflare tunnel](#using-a-named-tunnel) with a stable URL.
 
-### Then restart:
+### Then restart (order matters):
 
 ```bash
-make setup   # starts new tunnel, updates local configs automatically
-make down && make up
+make down    # stops containers AND the old tunnel
+make setup   # starts a new tunnel, prints the URL, waits while you update Duo Admin,
+             # then writes the URL into .env and quickstart.conf
+make up      # starts containers, then shows the tunnel URL and checks it matches .env
+make next    # what to run to test the setup, and what's still missing
 ```
+
+> Don't run `make down` after `make setup` — it kills the tunnel that setup just created. If `make up` prints **No quick tunnel is running** or **MISMATCH**, run `make setup` then `make up` again. `make status` runs the same check any time.
 
 Verify containers are running:
 ```bash

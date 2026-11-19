@@ -1,4 +1,4 @@
-.PHONY: setup restore up down demo logs check clean status
+.PHONY: setup restore up down demo logs check clean status next
 
 setup:
 	@bash scripts/restore-configs.sh
@@ -11,13 +11,20 @@ up:
 	COMPOSE_PROFILES=agentgateway docker compose up -d --build
 	@echo ""
 	@sleep 5
-	@bash scripts/check-health.sh
+	@bash scripts/check-health.sh || true
+	@echo ""
+	@bash scripts/check-tunnel.sh
+	@echo "  Next: run 'make next' to see how to test the setup."
+	@echo ""
 
 down:
 	COMPOSE_PROFILES=agentgateway docker compose down
 	@pkill -f "cloudflared tunnel" 2>/dev/null || true
 	@lsof -ti :8085 | xargs kill 2>/dev/null || true
 	@echo "  Stopped containers, tunnel, and callback server."
+
+next:
+	@bash scripts/next-steps.sh
 
 demo:
 	@bash scripts/demo.sh
@@ -30,12 +37,7 @@ check:
 
 status:
 	@echo ""
-	@echo "─── Current Tunnel URL ───"
-	@grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log 2>/dev/null | head -1 || echo "  No tunnel running"
-	@echo ""
-	@echo "─── Gateway URL (from .env) ───"
-	@grep GATEWAY_URL .env 2>/dev/null || echo "  No .env found"
-	@echo ""
+	@bash scripts/check-tunnel.sh
 	@echo "─── Containers ───"
 	@docker ps --format "  {{.Names}}\t{{.Status}}" 2>/dev/null || echo "  Docker not running"
 	@echo ""
